@@ -7,6 +7,7 @@ import signal
 import ctypes
 import sys
 import os
+import errno
 
 import vanilla.exception
 
@@ -33,6 +34,33 @@ if hasattr(select, 'epoll'):
             assert not rc, 'PR_SET_PDEATHSIG failed: %s' % rc
     except:
         log.warn('unable to load libc: needed to set PR_SET_PDEATHSIG')
+
+
+def check_executable(program):
+    err = None
+
+    def find_first_in_path():
+        for p in os.environ['PATH'].split(os.pathsep):
+            prog = os.path.join(p, program)
+            if os.path.isfile(prog):
+                return prog
+        return None
+
+    dname, bname = os.path.split(program)
+    if dname:
+        if not os.path.isfile(program):
+            err = errno.ENOENT
+        elif not os.access(program, os.X_OK):
+            err = errno.EACCES
+    else:
+        prog = find_first_in_path()
+        if prog is None:
+            err = errno.ENOENT
+        elif not os.access(program, os.X_OK):
+            err = errno.EACCES
+    if err is None:
+        return err
+    raise OSError(err, os.strerror(err), program)
 
 
 class __plugin__(object):
@@ -161,6 +189,7 @@ class __plugin__(object):
         return self.launch(self.bootstrap, f, *a, **kw)
 
     def execv(self, args, env=None, stderrtoout=False):
+        check_executable(args[0])
         if env:
             return self.launch(
                 os.execve, args[0], args, env, stderrtoout=stderrtoout)

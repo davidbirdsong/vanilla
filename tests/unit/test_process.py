@@ -1,6 +1,9 @@
 import vanilla
 import signal
 import os
+import sys
+import errno
+import tempfile
 
 import pytest
 
@@ -74,3 +77,56 @@ class TestProcess(object):
         assert child.stdout.recv_partition('\n') == 'worker: line1'
         child.stdin.send('line2\n')
         assert child.stdout.recv_partition('\n') == 'worker: line2'
+
+    def test_enoent(self):
+        h = vanilla.Hub()
+        d = tempfile.mkdtemp()
+        prog = os.path.join(d, 'ls')
+        oserror = False
+        try:
+                h.process.execv([prog])
+        except OSError, e:
+                oserror = True
+                assert e.errno == errno.ENOENT
+
+        assert oserror
+
+        os.environ['PATH'] = d
+        prog = 'ls'
+
+        oserror = False
+
+        try:
+                h.process.execv([prog])
+        except OSError, e:
+                oserror = True
+                assert e.errno == errno.ENOENT
+
+        assert oserror
+        os.rmdir(d)
+
+    def test_eaccess(self):
+        h = vanilla.Hub()
+        d = tempfile.mkdtemp()
+        f = prog = os.path.join(d, 'ls')
+        open(prog, 'w').write('')
+        oserror = False
+        try:
+                h.process.execv([prog])
+        except OSError, e:
+                oserror = True
+                assert e.errno == errno.EACCES
+
+        os.environ['PATH'] = d
+        prog = 'ls'
+        oserror = False
+        try:
+                h.process.execv([prog])
+        except OSError, e:
+                oserror = True
+                assert e.errno == errno.EACCES
+
+        assert oserror
+        print >> sys.stderr, 'removing file: ', f
+        os.unlink(f)
+        os.rmdir(d)
